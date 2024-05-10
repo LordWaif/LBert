@@ -108,6 +108,7 @@ if __name__ == '__main__':
     )
 
     history = {'train':history,'test':classification_report_test}
+    json.dump(history,open('history.json','w'),ensure_ascii=False,indent=4)
 
 
     
