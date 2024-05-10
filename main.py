@@ -1,7 +1,7 @@
 import os
 os.chdir(__file__.rsplit("/",1)[0])
 from transformers import BertTokenizer
-from LBert.classifier import CustomBertClassifier
+from classifier import CustomBertClassifier
 import datasets
 from datasets import load_dataset
 from config import PRE_TRAINED_MODEL_NAME,EPOCHS,PREDICT_POOLER,BATCH_SIZE,MAX_LENGTH,OVERLAP,MAX_LENGTH_TOKENS,LR,LOSS,OPTIMIZER
@@ -10,7 +10,7 @@ import torch
 from train_eval_fn import train_epoch,eval_model
 if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    from LBert.dataset import CustomDataset,CustomBatchSampler,custom_collate_fn
+    from dataset import CustomDataset,CustomBatchSampler,custom_collate_fn
     from transformers import get_linear_schedule_with_warmup
     import json,numpy as np
     labels_json = json.load(open("labels.json"))
@@ -59,7 +59,7 @@ if __name__ == '__main__':
     history = []
     best_acc = 0
 
-    from LBert.dataset import EarlyStopping
+    from dataset import EarlyStopping
     early_stopping = EarlyStopping(patience=5, verbose=True)
 
     from accelerate import Accelerator

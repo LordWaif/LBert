@@ -24,9 +24,10 @@ class Segmentator:
                 if _k[i].size(1) < max_length:
                     padding = torch.zeros(_k[i].size(0),max_length-_k[i].size(1),dtype=torch.int64)
                     _k[i] = torch.cat((_k[i],padding),dim=1)
-                else:
-                    break
-                _k[i] = torch.cat((cls,_k[i],sep),dim=1)
+                if k == 'input_ids':
+                    _k[i] = torch.cat((cls.unsqueeze(1),_k[i],sep.unsqueeze(1)),dim=1)
+                elif k == 'attention_mask':
+                    _k[i] = torch.cat((torch.ones(1,1),_k[i],torch.ones(1,1)),dim=1)
             _k = torch.stack(_k).squeeze(1)
             # Add CLS and SEP
             self.tokens[k] = _k
