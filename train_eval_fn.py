@@ -1,11 +1,12 @@
 from tqdm import tqdm
 from sklearn.metrics import classification_report, multilabel_confusion_matrix
-from config import get_multi_label_pred_fn
+from config import get_multi_label_pred_fn,get_multi_class_pred_fn
 import torch
 from torch import nn
 import numpy as np
 from collections import defaultdict
 from accelerate import Accelerator
+import torch.nn.functional as F
 
 def train_epoch(
   model,
@@ -15,6 +16,7 @@ def train_epoch(
   device, 
   scheduler,
   accelerator:Accelerator,
+  sub_task,
   **kwargs
     ):
     cum_targets = []
@@ -31,8 +33,13 @@ def train_epoch(
                 input_ids=input_ids,
                 attention_mask=attention_mask
             )
-            loss = loss_fn(outputs, targets.float())
-            preds = get_multi_label_pred_fn(outputs)
+            if sub_task == "multi_class":
+                probs = F.softmax(outputs,dim=1)
+                loss = loss_fn(probs, targets.float())
+                preds = get_multi_class_pred_fn(probs)
+            elif sub_task == "multi_label":
+                loss = loss_fn(outputs, targets.float())
+                preds = get_multi_label_pred_fn(outputs)
             cum_targets.extend(targets.detach().cpu())
             cum_preds.extend(preds.detach().cpu())
             losses.append(loss.item())
@@ -47,7 +54,7 @@ def train_epoch(
     cr['loss'] = np.mean(losses)
     return cr
 
-def eval_model(model, data_loader, loss_fn, device, early_stopping=None, **kwargs):
+def eval_model(model, data_loader, loss_fn, device, early_stopping,sub_task, **kwargs):
     model = model.eval()
     cum_targets = []
     cum_preds = []
@@ -64,16 +71,21 @@ def eval_model(model, data_loader, loss_fn, device, early_stopping=None, **kwarg
                 input_ids=input_ids,
                 attention_mask=attention_mask
             )
-            loss = loss_fn(outputs, targets.float())
-            losses = loss.item()
-            preds = get_multi_label_pred_fn(outputs)
+            if sub_task == "multi_class":
+                probs = F.softmax(outputs,dim=1)
+                loss = loss_fn(probs, targets.float())
+                preds = get_multi_class_pred_fn(probs)
+            elif sub_task == "multi_label":
+                loss = loss_fn(outputs, targets.float())
+                preds = get_multi_label_pred_fn(outputs)
             cum_targets.extend(targets.detach().cpu())
             cum_preds.extend(preds.detach().cpu())
+            losses.append(loss.item())
 
     early_stopping(np.mean(losses),model)
 
     cr:dict = classification_report(cum_targets,cum_preds,output_dict=True,target_names=labels_name) # type: ignore
     cr['loss'] = np.mean(losses)
-    cr['confusion_matrix'] = multilabel_confusion_matrix(cum_targets,cum_preds)
+    # cr['confusion_matrix'] = multilabel_confusion_matrix(cum_targets,cum_preds)
     print(classification_report(cum_targets,cum_preds,target_names=labels_name))
     return cr

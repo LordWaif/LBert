@@ -1,20 +1,24 @@
-import os
-os.chdir(__file__.rsplit("/",1)[0])
 from transformers import BertTokenizer
 from classifier import CustomBertClassifier
 import datasets
 from datasets import load_dataset
-from config import PRE_TRAINED_MODEL_NAME,EPOCHS,PREDICT_POOLER,BATCH_SIZE,MAX_LENGTH,OVERLAP,MAX_LENGTH_TOKENS,LR,LOSS,OPTIMIZER
+from config import PRE_TRAINED_MODEL_NAME,EPOCHS,PREDICT_POOLER,BATCH_SIZE,MAX_LENGTH,OVERLAP,MAX_LENGTH_TOKENS,LR,LOSS,OPTIMIZER, SUB_TASK
 from config import ACCUMULATIVE_STEPS
 import torch
 from train_eval_fn import train_epoch,eval_model
+from tqdm import tqdm
 if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     from dataset import CustomDataset,CustomBatchSampler,custom_collate_fn
     from transformers import get_linear_schedule_with_warmup
     import json,numpy as np
+    ecthr_cases = load_dataset("tweet_eval",data_dir="sentiment")
+    def collect_labels(labels):
+        lb = set(labels)
+        labels_map = {_:_i for _i,_ in enumerate(lb)}
+        json.dump(labels_map,open('labels.json','w'),ensure_ascii=False,indent=4)
+    # collect_labels(ecthr_cases['train']['label']) # type: ignore
     labels_json = json.load(open("labels.json"))
-    ecthr_cases = load_dataset("ecthr_cases",data_dir="alleged-violation-prediction")
     train = ecthr_cases["train"] # type: ignore
     test = ecthr_cases["test"] # type: ignore
     validation = ecthr_cases["validation"] # type: ignore
@@ -27,14 +31,19 @@ if __name__ == '__main__':
         num_labels = len(label_map)
         one_hot = np.zeros(num_labels)
         for label in labels:
-            label_index = label_map.get(label)
-            if label_index is not None:
-                one_hot[label_index] = 1
+          label_index = label_map.get(label)
+          if label_index is not None:
+              one_hot[label_index] = 1
         return one_hot
     
-    def createDataLoader(data:datasets.Dataset,max_length,overlap,max_length_tokens,batch_size,tokenizer,labels_json):
-        labels = [one_hot_encoding(lb,labels_json) for lb in train['labels']] # type: ignore
-        text = data['facts']
+    def createDataLoader(data:datasets.Dataset,max_length,overlap,max_length_tokens,batch_size,tokenizer,labels_json,feature_text,feature_label):
+        try:
+            iter(data[feature_label][0])
+            filtred_lb = filter(lambda lb: set(lb[1]).issubset(set(labels_json.keys())),zip(data[feature_text],data[feature_label]))
+        except TypeError:
+            filtred_lb = filter(lambda lb: str(lb[1]) in labels_json.keys(),zip(data[feature_text],data[feature_label]))
+        text,labels = zip(*filtred_lb)
+        labels = [one_hot_encoding(str(lb),labels_json) for lb in labels] # type: ignore
         dataset = CustomDataset(text,labels,tokenizer,max_length=max_length,overlap=overlap,max_length_tokens=max_length_tokens)
         dataloader = dataset.toDataLoader(
             collate_fn=custom_collate_fn,
@@ -42,9 +51,39 @@ if __name__ == '__main__':
         )
         return dataloader
     
-    train_dataloader = createDataLoader(train,MAX_LENGTH,OVERLAP,MAX_LENGTH_TOKENS,BATCH_SIZE,tokenizer,labels_json) # type: ignore
-    test_dataloader = createDataLoader(test,MAX_LENGTH,OVERLAP,MAX_LENGTH_TOKENS,BATCH_SIZE,tokenizer,labels_json) # type: ignore
-    validation_dataloader = createDataLoader(validation,MAX_LENGTH,OVERLAP,MAX_LENGTH_TOKENS,BATCH_SIZE,tokenizer,labels_json) # type: ignore
+    train_dataloader = createDataLoader(
+        train, # type: ignore
+        MAX_LENGTH,
+        OVERLAP,
+        MAX_LENGTH_TOKENS,
+        BATCH_SIZE,
+        tokenizer,
+        labels_json,
+        'text',
+        'label'
+    ) # type: ignore
+    test_dataloader = createDataLoader(
+        test, # type: ignore
+        MAX_LENGTH,
+        OVERLAP,
+        MAX_LENGTH_TOKENS,
+        BATCH_SIZE,
+        tokenizer,
+        labels_json,
+        'text',
+        'label'
+    ) # type: ignore
+    validation_dataloader = createDataLoader(
+        validation, # type: ignore
+        MAX_LENGTH,
+        OVERLAP,
+        MAX_LENGTH_TOKENS,
+        BATCH_SIZE,
+        tokenizer,
+        labels_json,
+        'text',
+        'label'
+    ) # type: ignore
 
     optimizer = OPTIMIZER(model.parameters(),lr=LR,correct_bias=False)
     total_steps = len(train_dataloader) * EPOCHS
@@ -79,6 +118,7 @@ if __name__ == '__main__':
             device,
             scheduler,
             accelerator,
+            SUB_TASK,
             labels_name = list(labels_json.keys()),
         )
 
@@ -87,7 +127,8 @@ if __name__ == '__main__':
             validation_dataloader,
             loss_fn,
             device,
-            early_stopping=early_stopping,
+            early_stopping,
+            SUB_TASK,
             labels_name = list(labels_json.keys())
         )
         history.append({
@@ -104,17 +145,10 @@ if __name__ == '__main__':
         test_dataloader,
         loss_fn,
         device,
+        early_stopping,
+        SUB_TASK,
         labels_name = list(labels_json.keys())
     )
 
     history = {'train':history,'test':classification_report_test}
     json.dump(history,open('history.json','w'),ensure_ascii=False,indent=4)
-
-
-    
-
-
-    # one_hot_encoding_labels = {l:_ for _,l in enumerate(sorted(set([_ for l in ecthr_cases["train"]["labels"] for _ in l]),key=lambda x: (0,x) if x.startswith("P") else (1,x)))} # type: ignore
-    # import json
-    # with open("labels.json","w") as f:
-    #     json.dump(one_hot_encoding_labels,f,indent=4)
