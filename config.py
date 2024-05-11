@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 from transformers import AdamW
+import numpy as np
 
 SUB_TASK = 'multi_class'
 PRE_TRAINED_MODEL_NAME = "google-bert/bert-base-cased"
@@ -18,4 +19,5 @@ OPTIMIZER = AdamW
 
 TRESHOLD = .5
 get_multi_label_pred_fn = lambda x: (torch.sigmoid(x) > TRESHOLD).int()
-get_multi_class_pred_fn = lambda x: (x == torch.max(x)).int()
+def get_multi_class_pred_fn(x):
+    return torch.argmax(torch.tensor(x),dim=1)

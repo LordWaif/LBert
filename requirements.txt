@@ -4,7 +4,6 @@ numpy==1.26.4
 safetensors==0.4.3
 scikit-learn==1.4.2
 scipy==1.13.0
-tokenizers==0.19.1
-torch==2.2.2
-tqdm==4.66.2
-transformers==4.41.0.dev0
+torch
+tqdm
+transformers

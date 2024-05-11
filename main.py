@@ -44,7 +44,7 @@ if __name__ == '__main__':
             filtred_lb = filter(lambda lb: str(lb[1]) in labels_json.keys(),zip(data[feature_text],data[feature_label]))
         text,labels = zip(*filtred_lb)
         labels = [one_hot_encoding(str(lb),labels_json) for lb in labels] # type: ignore
-        dataset = CustomDataset(text,labels,tokenizer,max_length=max_length,overlap=overlap,max_length_tokens=max_length_tokens)
+        dataset = CustomDataset(text[:200],labels[:200],tokenizer,max_length=max_length,overlap=overlap,max_length_tokens=max_length_tokens)
         dataloader = dataset.toDataLoader(
             collate_fn=custom_collate_fn,
             batch_sampler=CustomBatchSampler(dataset,batch_size=batch_size)

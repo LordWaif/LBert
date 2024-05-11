@@ -6,6 +6,7 @@ from token_segmentor import Segmentator
 import torch
 from tqdm import tqdm
 import numpy as np
+import math
 
 class CustomDataset(Dataset):
 
@@ -87,18 +88,19 @@ class CustomBatchSampler(BatchSampler):
     def __iter__(self):
         batch_index = []
         for _i in range(0,len(self.dataset_sorted)):
-            if len(batch_index) == 0:
-                batch_index = [self.original_indices[_i]]
-            elif len(batch_index) < self.batch_size:
+            # print(_i)
+            if len(batch_index) < self.batch_size:
                 batch_index.append(self.original_indices[_i])
             else:
+                # print(len(batch_index))
                 yield batch_index
                 batch_index = [self.original_indices[_i]]
         if len(batch_index) > 0:
+            # print(len(batch_index))
             yield batch_index
 
     def __len__(self):
-        return len(self.dataset_sorted) // self.batch_size
+        return math.ceil(len(self.dataset_sorted) / self.batch_size)
     
 class EarlyStopping:
     def __init__(self, patience=7, verbose=False, delta=0, path='checkpoint.pt', trace_func=print):
