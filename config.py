@@ -18,4 +18,4 @@ OPTIMIZER = AdamW
 
 TRESHOLD = .5
 get_multi_label_pred_fn = lambda x: (torch.sigmoid(x) > TRESHOLD).int()
-get_multi_class_pred_fn = lambda x: torch.argsort(x).int()
+get_multi_class_pred_fn = lambda x: (x == torch.max(x)).int()
