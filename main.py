@@ -12,7 +12,7 @@ if __name__ == '__main__':
     from dataset import CustomDataset,CustomBatchSampler,custom_collate_fn
     from transformers import get_linear_schedule_with_warmup
     import json,numpy as np
-    ecthr_cases = load_dataset("tweet_eval",data_dir="sentiment")
+    ecthr_cases = load_dataset("ecthr_cases",data_dir="alleged-violation-prediction")
     def collect_labels(labels):
         lb = set(labels)
         labels_map = {_:_i for _i,_ in enumerate(lb)}
@@ -36,15 +36,14 @@ if __name__ == '__main__':
               one_hot[label_index] = 1
         return one_hot
     
-    def createDataLoader(data:datasets.Dataset,max_length,overlap,max_length_tokens,batch_size,tokenizer,labels_json,feature_text,feature_label):
-        try:
-            iter(data[feature_label][0])
+    def createDataLoader(data:datasets.Dataset,max_length,overlap,max_length_tokens,batch_size,tokenizer,labels_json,feature_text,feature_label,sub_task):
+        if sub_task == 'multi_label':
             filtred_lb = filter(lambda lb: set(lb[1]).issubset(set(labels_json.keys())),zip(data[feature_text],data[feature_label]))
-        except TypeError:
+        elif sub_task == 'multi_class':
             filtred_lb = filter(lambda lb: str(lb[1]) in labels_json.keys(),zip(data[feature_text],data[feature_label]))
         text,labels = zip(*filtred_lb)
         labels = [one_hot_encoding(str(lb),labels_json) for lb in labels] # type: ignore
-        dataset = CustomDataset(text[:200],labels[:200],tokenizer,max_length=max_length,overlap=overlap,max_length_tokens=max_length_tokens)
+        dataset = CustomDataset(text[:100],labels[:100],tokenizer,max_length=max_length,overlap=overlap,max_length_tokens=max_length_tokens)
         dataloader = dataset.toDataLoader(
             collate_fn=custom_collate_fn,
             batch_sampler=CustomBatchSampler(dataset,batch_size=batch_size)
@@ -59,8 +58,9 @@ if __name__ == '__main__':
         BATCH_SIZE,
         tokenizer,
         labels_json,
-        'text',
-        'label'
+        'facts',
+        'labels',
+        SUB_TASK
     ) # type: ignore
     test_dataloader = createDataLoader(
         test, # type: ignore
@@ -70,8 +70,9 @@ if __name__ == '__main__':
         BATCH_SIZE,
         tokenizer,
         labels_json,
-        'text',
-        'label'
+        'facts',
+        'labels',
+        SUB_TASK
     ) # type: ignore
     validation_dataloader = createDataLoader(
         validation, # type: ignore
@@ -81,8 +82,9 @@ if __name__ == '__main__':
         BATCH_SIZE,
         tokenizer,
         labels_json,
-        'text',
-        'label'
+        'facts',
+        'labels',
+        SUB_TASK
     ) # type: ignore
 
     optimizer = OPTIMIZER(model.parameters(),lr=LR,correct_bias=False)
