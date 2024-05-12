@@ -14,6 +14,7 @@ from config import (
     LOSS,
     OPTIMIZER,
     SUB_TASK,
+    ORG_MODE,
 )
 from config import ACCUMULATIVE_STEPS
 import torch
@@ -97,7 +98,12 @@ if __name__ == "__main__":
         )
         dataloader = dataset.toDataLoader(
             collate_fn=custom_collate_fn,
-            batch_sampler=CustomBatchSampler(dataset, batch_size=batch_size),
+            batch_sampler=CustomBatchSampler(
+                dataset,
+                batch_size=batch_size,
+                org_mode=ORG_MODE,
+                max_length_tokens=max_length_tokens,
+            ),
         )
         return dataloader
 

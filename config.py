@@ -10,13 +10,15 @@ PREDICT_POOLER = "mean"
 BATCH_SIZE = 1
 MAX_LENGTH = 512
 OVERLAP = 0.2
-MAX_LENGTH_TOKENS = 2048
+MAX_LENGTH_TOKENS = 4096
 LR = 5e-5
 ACCUMULATIVE_STEPS = 32
 DEBUG_MODE = False
 
 LOSS = nn.BCEWithLogitsLoss
 OPTIMIZER = AdamW
+
+ORG_MODE = "token_mode"
 
 TRESHOLD = 0.4
 get_multi_label_pred_fn = lambda x: (torch.sigmoid(x) > TRESHOLD).int()

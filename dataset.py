@@ -84,9 +84,8 @@ def custom_collate_fn(batch):
 
 
 class CustomBatchSampler(BatchSampler):
-    def __init__(self, dataset, batch_size):
+    def __init__(self, dataset, batch_size, org_mode, max_length_tokens):
         self.dataset = dataset
-        self.batch_size = batch_size
         self.dataset_sorted = sorted(
             tqdm(enumerate(self.dataset), desc=f"Sorting data for dinamic batch size"),
             key=lambda x: x[1]["input_ids"].shape[0],
@@ -94,20 +93,39 @@ class CustomBatchSampler(BatchSampler):
         )
         sorted_indices, self.dataset_sorted = zip(*self.dataset_sorted)
         self.original_indices = sorted_indices
+        self.org_mode = org_mode
+        self.max_length_tokens = max_length_tokens
+        self.batch_size = batch_size
+        if org_mode == "batch_mode":
+            self.batch_size = batch_size
+        elif org_mode == "token_mode":
+            self.batch_size = max_length_tokens
+        self.size = 0
 
     def __iter__(self):
         batch_index = []
+        batch_token_size = []
         for _i in range(0, len(self.dataset_sorted)):
-            if len(batch_index) < self.batch_size:
+            flatten_size = self.dataset_sorted[_i]["input_ids"].shape[0] * self.dataset_sorted[_i]["input_ids"].shape[1]  # type: ignore
+            batch_ocupation = (
+                sum(batch_token_size)
+                if self.org_mode == "token_mode"
+                else len(batch_index)
+            )
+            if batch_ocupation < self.batch_size:
                 batch_index.append(self.original_indices[_i])
+                batch_token_size.append(flatten_size)
             else:
                 yield batch_index
+                self.size += 1
                 batch_index = [self.original_indices[_i]]
+                batch_token_size = [flatten_size]
         if len(batch_index) > 0:
             yield batch_index
+            self.size += 1
 
     def __len__(self):
-        return math.ceil(len(self.dataset_sorted) / self.batch_size)
+        return self.size
 
 
 class EarlyStopping:
