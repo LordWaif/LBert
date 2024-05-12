@@ -42,8 +42,11 @@ if __name__ == '__main__':
         elif sub_task == 'multi_class':
             filtred_lb = filter(lambda lb: str(lb[1]) in labels_json.keys(),zip(data[feature_text],data[feature_label]))
         text,labels = zip(*filtred_lb)
-        labels = [one_hot_encoding(str(lb),labels_json) for lb in labels] # type: ignore
-        dataset = CustomDataset(text[:100],labels[:100],tokenizer,max_length=max_length,overlap=overlap,max_length_tokens=max_length_tokens)
+        if sub_task == 'multi_class':
+            labels = [one_hot_encoding(str(lb),labels_json) for lb in labels]
+        elif sub_task == 'multi_label':
+            labels = [one_hot_encoding(lb,labels_json) for lb in labels] 
+        dataset = CustomDataset(text,labels,tokenizer,max_length=max_length,overlap=overlap,max_length_tokens=max_length_tokens)
         dataloader = dataset.toDataLoader(
             collate_fn=custom_collate_fn,
             batch_sampler=CustomBatchSampler(dataset,batch_size=batch_size)
