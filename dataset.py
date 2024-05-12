@@ -100,7 +100,6 @@ class CustomBatchSampler(BatchSampler):
             self.batch_size = batch_size
         elif org_mode == "token_mode":
             self.batch_size = max_length_tokens
-        self.size = 0
 
     def __iter__(self):
         batch_index = []
@@ -117,15 +116,16 @@ class CustomBatchSampler(BatchSampler):
                 batch_token_size.append(flatten_size)
             else:
                 yield batch_index
-                self.size += 1
                 batch_index = [self.original_indices[_i]]
                 batch_token_size = [flatten_size]
         if len(batch_index) > 0:
             yield batch_index
-            self.size += 1
 
     def __len__(self):
-        return self.size
+        if self.org_mode == "batch_mode":
+            return math.ceil(len(self.dataset_sorted) / self.batch_size)
+        elif self.org_mode == "token_mode":
+            return math.ceil(sum([_["input_ids"].shape[0] * _["input_ids"].shape[1] for _ in self.dataset_sorted]) / self.batch_size)  # type: ignore
 
 
 class EarlyStopping:
