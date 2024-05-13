@@ -7,6 +7,7 @@ import torch
 from tqdm import tqdm
 import numpy as np
 import math
+import os
 
 
 class CustomDataset(Dataset):
@@ -87,7 +88,11 @@ class CustomBatchSampler(BatchSampler):
     def __init__(self, dataset, batch_size, org_mode, max_length_tokens):
         self.dataset = dataset
         self.dataset_sorted = sorted(
-            tqdm(enumerate(self.dataset), desc=f"Sorting data for dinamic batch size"),
+            tqdm(
+                enumerate(self.dataset),
+                total=len(self.dataset),
+                desc=f"Sorting data for dinamic batch size",
+            ),
             key=lambda x: x[1]["input_ids"].shape[0],
             reverse=True,
         )
@@ -128,6 +133,63 @@ class CustomBatchSampler(BatchSampler):
             return math.ceil(sum([_["input_ids"].shape[0] * _["input_ids"].shape[1] for _ in self.dataset_sorted]) / self.batch_size)  # type: ignore
 
 
+def one_hot_encoding(labels, label_map):
+    num_labels = len(label_map)
+    one_hot = np.zeros(num_labels)
+    for label in labels:
+        label_index = label_map.get(str(label))
+        if label_index is not None:
+            one_hot[label_index] = 1
+    return one_hot
+
+
+def createDataLoader(
+    data: Dataset,
+    max_length,
+    overlap,
+    max_length_tokens,
+    batch_size,
+    tokenizer,
+    labels_json,
+    feature_text,
+    feature_label,
+    sub_task,
+    org_mode,
+):
+    def filter_ln_fn(lb, sub_task, labels_json):
+        if sub_task == "multi_label":
+            return set(lb[1]).issubset(set(labels_json.keys()))
+        elif sub_task == "multi_class":
+            return str(lb[1]) in labels_json.keys()
+
+    filtred_lb = filter(
+        lambda lb: filter_ln_fn(lb, sub_task, labels_json),
+        zip(data[feature_text], data[feature_label]),
+    )
+    text, labels = zip(*filtred_lb)
+    labels_one_hot = [
+        one_hot_encoding(lb if type(lb) is list else [lb], labels_json) for lb in labels
+    ]
+    dataset = CustomDataset(
+        text,
+        labels_one_hot,
+        tokenizer,
+        max_length=max_length,
+        overlap=overlap,
+        max_length_tokens=max_length_tokens,
+    )
+    dataloader = dataset.toDataLoader(
+        collate_fn=custom_collate_fn,
+        batch_sampler=CustomBatchSampler(
+            dataset,
+            batch_size=batch_size,
+            org_mode=org_mode,
+            max_length_tokens=max_length_tokens,
+        ),
+    )
+    return dataloader
+
+
 class EarlyStopping:
     def __init__(
         self, patience=7, verbose=False, delta=0, path="checkpoint.pt", trace_func=print
@@ -141,6 +203,8 @@ class EarlyStopping:
         self.delta = delta
         self.path = path
         self.trace_func = trace_func
+
+        self.models_dirs = os.makedirs("output", exist_ok=True)
 
     def __call__(self, val_loss, model):
         score = -val_loss
@@ -164,8 +228,11 @@ class EarlyStopping:
             self.trace_func(
                 f"Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ..."
             )
-        torch.save(model.state_dict(), self.path)
         self.val_loss_min = val_loss
+        torch.save(
+            model.state_dict(),
+            f"{'output'}/{self.path}_loss:{self.val_loss_min:.2f}",  # type: ignore
+        )
 
     def load_checkpoint(self, model):
         model.load_state_dict(torch.load(self.path))

@@ -1,6 +1,5 @@
 from transformers import BertTokenizer
 from classifier import CustomBertClassifier
-import datasets
 from datasets import load_dataset
 from config import (
     PRE_TRAINED_MODEL_NAME,
@@ -15,17 +14,16 @@ from config import (
     OPTIMIZER,
     SUB_TASK,
     ORG_MODE,
+    PATIENCE,
+    ACCUMULATIVE_STEPS,
 )
-from config import ACCUMULATIVE_STEPS
 import torch
-from train_eval_fn import train_epoch, eval_model
-from tqdm import tqdm
+from dataset import createDataLoader
+import json
+from train_eval_fn import Trainer
 
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    from dataset import CustomDataset, CustomBatchSampler, custom_collate_fn
-    from transformers import get_linear_schedule_with_warmup
-    import json, numpy as np
 
     name_dataset = "ecthr_cases"
     data_dir = "alleged-violation-prediction"
@@ -50,62 +48,6 @@ if __name__ == "__main__":
     )
     model = model.to(device)
     tokenizer = BertTokenizer.from_pretrained(PRE_TRAINED_MODEL_NAME)
-    # REAL BATCH_SIZE SUPERIOR = batch_size*(max_length_tokens//max_length)
-
-    def one_hot_encoding(labels, label_map):
-        num_labels = len(label_map)
-        one_hot = np.zeros(num_labels)
-        for label in labels:
-            label_index = label_map.get(str(label))
-            if label_index is not None:
-                one_hot[label_index] = 1
-        return one_hot
-
-    def createDataLoader(
-        data: datasets.Dataset,
-        max_length,
-        overlap,
-        max_length_tokens,
-        batch_size,
-        tokenizer,
-        labels_json,
-        feature_text,
-        feature_label,
-        sub_task,
-    ):
-        def filter_ln_fn(lb, sub_task, labels_json):
-            if sub_task == "multi_label":
-                return set(lb[1]).issubset(set(labels_json.keys()))
-            elif sub_task == "multi_class":
-                return str(lb[1]) in labels_json.keys()
-
-        filtred_lb = filter(
-            lambda lb: filter_ln_fn(lb, sub_task, labels_json),
-            zip(data[feature_text], data[feature_label]),
-        )
-        text, labels = zip(*filtred_lb)
-        labels_one_hot = [
-            one_hot_encoding(lb if type(lb) is list else [lb], labels_json)
-            for lb in labels
-        ]
-        dataset = CustomDataset(
-            text,
-            labels_one_hot,
-            tokenizer,
-            max_length=max_length,
-            overlap=overlap,
-            max_length_tokens=max_length_tokens,
-        )
-        dataloader = dataset.toDataLoader(
-            collate_fn=custom_collate_fn,
-            batch_sampler=CustomBatchSampler(
-                dataset,
-                batch_size=batch_size,
-                org_mode=ORG_MODE,
-                max_length_tokens=max_length_tokens,
-            ),
-        )
-        return dataloader
 
     def __(dataloader):
         if name_dataset == "ecthr_cases":
@@ -115,109 +57,40 @@ if __name__ == "__main__":
         else:
             return dataloader
 
-    train_dataloader = createDataLoader(
-        __(train),  # type: ignore
-        MAX_LENGTH,
-        OVERLAP,
-        MAX_LENGTH_TOKENS,
-        BATCH_SIZE,
-        tokenizer,
-        labels_json,
-        feature_text,
-        feature_label,
-        SUB_TASK,
-    )  # type: ignore
-    test_dataloader = createDataLoader(
-        __(test),  # type: ignore
-        MAX_LENGTH,
-        OVERLAP,
-        MAX_LENGTH_TOKENS,
-        BATCH_SIZE,
-        tokenizer,
-        labels_json,
-        feature_text,
-        feature_label,
-        SUB_TASK,
-    )  # type: ignore
-    validation_dataloader = createDataLoader(
-        __(validation),  # type: ignore
-        MAX_LENGTH,
-        OVERLAP,
-        MAX_LENGTH_TOKENS,
-        BATCH_SIZE,
-        tokenizer,
-        labels_json,
-        feature_text,
-        feature_label,
-        SUB_TASK,
-    )  # type: ignore
+    train_dataloader, test_dataloader, validation_dataloader = map(
+        lambda x: createDataLoader(
+            x,  # type: ignore
+            MAX_LENGTH,
+            OVERLAP,
+            MAX_LENGTH_TOKENS,
+            BATCH_SIZE,
+            tokenizer,
+            labels_json,
+            feature_text,
+            feature_label,
+            SUB_TASK,
+            ORG_MODE,
+        ),
+        [__(train), __(test), __(validation)],
+    )
 
     optimizer = OPTIMIZER(model.parameters(), lr=LR)
-    total_steps = len(train_dataloader) * EPOCHS
-
-    scheduler = get_linear_schedule_with_warmup(
-        optimizer, num_warmup_steps=0, num_training_steps=total_steps
-    )
-
     loss_fn = LOSS().to(device)
-    history = []
-    best_acc = 0
 
-    from dataset import EarlyStopping
-
-    early_stopping = EarlyStopping(patience=5, verbose=True)
-
-    from accelerate import Accelerator
-
-    accelerator = Accelerator(gradient_accumulation_steps=ACCUMULATIVE_STEPS)
-
-    model, optimizer, train_dataloader, scheduler = accelerator.prepare(
-        model, optimizer, train_dataloader, scheduler
-    )
-    for epoch in range(EPOCHS):
-        print(f"Epoch {epoch+1}/{EPOCHS}")
-
-        classification_report_train = train_epoch(
-            model,
-            train_dataloader,
-            loss_fn,
-            optimizer,
-            device,
-            scheduler,
-            accelerator,
-            SUB_TASK,
-            labels_name=list(labels_json.keys()),
-        )
-
-        classification_report_eval = eval_model(
-            model,
-            validation_dataloader,
-            loss_fn,
-            device,
-            early_stopping,
-            SUB_TASK,
-            labels_name=list(labels_json.keys()),
-        )
-        history.append(
-            {
-                "epoch": epoch + 1,
-                "train_cr": classification_report_train,
-                "eval_cr": classification_report_eval,
-                "eval_loss": classification_report_eval["loss"],
-            }
-        )
-
-        print(f'Eval loss {classification_report_eval["loss"]}')
-
-    classification_report_test = eval_model(
+    trainer = Trainer(
         model,
-        test_dataloader,
+        optimizer,
         loss_fn,
         device,
-        early_stopping,
         SUB_TASK,
-        labels_name=list(labels_json.keys()),
+        labels_json,
+        ACCUMULATIVE_STEPS,
+        True,
+        patience=PATIENCE,
     )
 
-    history = {"train": history, "test": classification_report_test}
+    trainer.train(EPOCHS, train_dataloader, validation_dataloader)  # type: ignore
+    trainer.evaluate(test_dataloader)  # type: ignore
+
+    history = trainer.history
     json.dump(history, open("history.json", "w"), ensure_ascii=False, indent=4)

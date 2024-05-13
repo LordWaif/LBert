@@ -1,12 +1,16 @@
+import numpy as np
 from tqdm import tqdm
-from sklearn.metrics import classification_report, multilabel_confusion_matrix
-from config import get_multi_label_pred_fn, get_multi_class_pred_fn, DEBUG_MODE
+
 import torch
 from torch import nn
-import numpy as np
-from collections import defaultdict
-from accelerate import Accelerator
+from torch.utils.data import Dataset
 import torch.nn.functional as F
+
+from transformers import get_linear_schedule_with_warmup
+from accelerate import Accelerator
+from dataset import EarlyStopping
+from sklearn.metrics import classification_report
+from config import get_multi_label_pred_fn, get_multi_class_pred_fn, DEBUG_MODE
 
 
 def train_epoch(
@@ -99,3 +103,122 @@ def train_eval_fn(model, batch, sub_task, loss_fn, device):
             return internal_train_eval_fn(model, batch, sub_task, loss_fn, device)
     else:
         return internal_train_eval_fn(model, batch, sub_task, loss_fn, device)
+
+
+class Trainer:
+    def __init__(
+        self,
+        model: torch.nn.Module,
+        optimizer: torch.optim.Optimizer,
+        loss_fn,
+        device,
+        sub_task,
+        labels_name,
+        accumulate_steps,
+        early_stopping,
+        patience,
+    ):
+        self.model = model
+        self.optimizer = optimizer
+        self.loss_fn = loss_fn
+        self.device = device
+        self.sub_task = sub_task
+        self.labels_name = labels_name
+        self.accumulate_steps = accumulate_steps
+        self.early_stopping = early_stopping
+        self.patience = patience
+
+        self.accelerator = Accelerator(
+            gradient_accumulation_steps=self.accumulate_steps
+        )
+
+        if self.early_stopping:
+            self.early_stopping = EarlyStopping(patience=self.patience, verbose=True)
+
+        self.history = {}
+
+    def save_history(self, func):
+        def wrapper(*args, **kwargs):
+            result = func(*args, **kwargs)
+            self.history[func.__name__] = result
+            return result
+
+        return wrapper
+
+    def __getattribute__(self, name):
+        attr = super().__getattribute__(name)
+        if callable(attr) and name in ["train", "evaluate"]:
+            return self.save_history(attr)
+        return attr
+
+    def train(
+        self,
+        epoch: int,
+        train_dataloader: Dataset,
+        validation_dataloader=None,
+    ):
+        total_steps = len(train_dataloader) * epoch  # type: ignore
+        self.scheduler = get_linear_schedule_with_warmup(
+            self.optimizer, num_warmup_steps=0, num_training_steps=total_steps
+        )
+        self.model, self.optimizer, self.scheduler = self.accelerator.prepare(
+            self.model, self.optimizer, self.scheduler
+        )
+        history = []
+        for epoch in range(epoch):
+            print(f"Epoch {epoch+1}/{epoch}")
+
+            classification_report_train = train_epoch(
+                self.model,
+                train_dataloader,
+                self.loss_fn,
+                self.optimizer,
+                self.device,
+                self.scheduler,
+                self.accelerator,
+                self.sub_task,
+                labels_name=self.labels_name,
+            )
+            if validation_dataloader:
+                classification_report_eval = eval_model(
+                    self.model,
+                    validation_dataloader,
+                    self.loss_fn,
+                    self.device,
+                    self.early_stopping,
+                    self.sub_task,
+                    labels_name=self.labels_name,
+                )
+            history.append(
+                {
+                    "epoch": epoch + 1,
+                    "train_cr": classification_report_train,
+                    "eval_cr": classification_report_eval,
+                    "eval_loss": (
+                        classification_report_eval["loss"]
+                        if validation_dataloader
+                        else None
+                    ),
+                }
+            )
+
+            print(
+                f'Eval loss {classification_report_eval["loss"] if validation_dataloader else "N/A"}'
+            )
+
+        return history
+
+    def evaluate(self, test_dataloader: Dataset):
+        classification_report_test = eval_model(
+            self.model,
+            test_dataloader,
+            self.loss_fn,
+            self.device,
+            self.early_stopping,
+            self.sub_task,
+            labels_name=self.labels_name,
+        )
+        return classification_report_test
+
+    def get_history(self):
+        return self.history
