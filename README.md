@@ -1,4 +1,4 @@
-# LBert: Repositório de Treinamento do BERT para Textos Longos
+# LBert: Long Bert
 
 ## Visão Geral
 
