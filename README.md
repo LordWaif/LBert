@@ -21,7 +21,7 @@ O principal objetivo do LBert é estender a capacidade do BERT padrão para proc
 1. **Clone o Repositório**: Clone este repositório para sua máquina local.
 
    ```
-   git clone https://github.com/seu-usuario/lbert.git
+   git clone https://github.com/LordWaif/LBert.git
    ```
 
 2. **Instale as Dependências**: Certifique-se de ter instalado todas as dependências necessárias, conforme especificado no arquivo `requirements.txt`.
