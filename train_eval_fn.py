@@ -46,7 +46,7 @@ def train_epoch(
             optimizer.zero_grad()
     stack_target = torch.cat(stack_target, dim=0)
     stack_preds = torch.cat(stack_preds, dim=0)
-    cr: dict = classification_report(stack_target, stack_preds, output_dict=True, target_names=labels_name)  # type: ignore
+    cr: dict = classification_report(stack_target, stack_preds, output_dict=True, target_names=labels_name, zero_division=0)  # type: ignore
     # print(classification_report(cum_targets,cum_preds,target_names=labels_name))
     cr["loss"] = np.mean(losses)
     return cr
@@ -72,10 +72,14 @@ def eval_model(model, data_loader, loss_fn, device, early_stopping, sub_task, **
     early_stopping(np.mean(losses), model)
     stack_target = torch.cat(stack_target, dim=0)
     stack_preds = torch.cat(stack_preds, dim=0)
-    cr: dict = classification_report(stack_target, stack_preds, output_dict=True, target_names=labels_name)  # type: ignore
+    cr: dict = classification_report(stack_target, stack_preds, output_dict=True, target_names=labels_name, zero_division=0)  # type: ignore
     cr["loss"] = np.mean(losses)
     # cr['confusion_matrix'] = multilabel_confusion_matrix(cum_targets,cum_preds)
-    print(classification_report(stack_target, stack_preds, target_names=labels_name))
+    print(
+        classification_report(
+            stack_target, stack_preds, target_names=labels_name, zero_division=0
+        )
+    )
     return cr
 
 
@@ -135,7 +139,7 @@ class Trainer:
         if self.early_stopping:
             self.early_stopping = EarlyStopping(patience=self.patience, verbose=True)
 
-        self.history = {}
+        self.history = {"num_parameters": model.num_parameters}
 
     def save_history(self, func):
         def wrapper(*args, **kwargs):
@@ -165,8 +169,8 @@ class Trainer:
             self.model, self.optimizer, self.scheduler
         )
         history = []
-        for epoch in range(epoch):
-            print(f"Epoch {epoch+1}/{epoch}")
+        for n_epoch in range(epoch):
+            print(f"Epoch {n_epoch+1}/{epoch}")
 
             classification_report_train = train_epoch(
                 self.model,
@@ -191,7 +195,7 @@ class Trainer:
                 )
             history.append(
                 {
-                    "epoch": epoch + 1,
+                    "epoch": n_epoch + 1,
                     "train_cr": classification_report_train,
                     "eval_cr": classification_report_eval,
                     "eval_loss": (

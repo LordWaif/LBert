@@ -44,14 +44,14 @@ class CustomDataset(Dataset):
             padding=False,
             truncation=False,
         )
-        tokens_fact = self.segmentator.splitEvenly(
+        tokens_fact_after = self.segmentator.splitEvenly(
             tokens_fact, segment_size, overlap, max_segment_qtd
         )
 
         return {
             "fact_text": fact,
-            "input_ids": tokens_fact["input_ids"],
-            "attention_mask": tokens_fact["attention_mask"],
+            "input_ids": tokens_fact_after["input_ids"],
+            "attention_mask": tokens_fact_after["attention_mask"],
             "targets": torch.tensor(violation, dtype=torch.long),
         }
 
@@ -92,6 +92,7 @@ class CustomBatchSampler(BatchSampler):
                 enumerate(self.dataset),
                 total=len(self.dataset),
                 desc=f"Sorting data for dinamic batch size",
+                leave=False,
             ),
             key=lambda x: x[1]["input_ids"].shape[0],
             reverse=True,
@@ -158,17 +159,23 @@ def createDataLoader(
 ):
     def filter_ln_fn(lb, sub_task, labels_json):
         if sub_task == "multi_label":
-            return set(lb[1]).issubset(set(labels_json.keys()))
+            return set(map(str, lb[1])).issubset(set(labels_json.keys()))
         elif sub_task == "multi_class":
             return str(lb[1]) in labels_json.keys()
 
     filtred_lb = filter(
         lambda lb: filter_ln_fn(lb, sub_task, labels_json),
-        zip(data[feature_text], data[feature_label]),
-    )
+        tqdm(
+            zip(data[feature_text], data[feature_label]),
+            desc="Filtering data per label",
+            total=len(data[feature_text]),
+            leave=False,
+        ),
+    )  # type: ignore
     text, labels = zip(*filtred_lb)
     labels_one_hot = [
-        one_hot_encoding(lb if type(lb) is list else [lb], labels_json) for lb in labels
+        one_hot_encoding(lb if type(lb) is list else [lb], labels_json)
+        for lb in tqdm(labels, desc="One Hot Encoding", total=len(labels), leave=False)
     ]
     dataset = CustomDataset(
         text,
@@ -178,14 +185,14 @@ def createDataLoader(
         overlap=overlap,
         max_length_tokens=max_length_tokens,
     )
+    batch_sampler = CustomBatchSampler(
+        dataset,
+        batch_size=batch_size,
+        org_mode=org_mode,
+        max_length_tokens=max_length_tokens,
+    )
     dataloader = dataset.toDataLoader(
-        collate_fn=custom_collate_fn,
-        batch_sampler=CustomBatchSampler(
-            dataset,
-            batch_size=batch_size,
-            org_mode=org_mode,
-            max_length_tokens=max_length_tokens,
-        ),
+        collate_fn=custom_collate_fn, batch_sampler=batch_sampler
     )
     return dataloader
 
