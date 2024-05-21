@@ -198,9 +198,7 @@ def createDataLoader(
 
 
 class EarlyStopping:
-    def __init__(
-        self, patience=7, verbose=False, delta=0, path="checkpoint.pt", trace_func=print
-    ):
+    def __init__(self, output, patience=7, verbose=False, delta=0, trace_func=print):
         self.patience = patience
         self.verbose = verbose
         self.counter = 0
@@ -208,10 +206,11 @@ class EarlyStopping:
         self.early_stop = False
         self.val_loss_min = np.Inf
         self.delta = delta
-        self.path = path
         self.trace_func = trace_func
 
-        self.models_dirs = os.makedirs("output", exist_ok=True)
+        self.step = 0
+        self.path_folder = f"{output}_output"
+        self.models_dirs = os.makedirs(self.path_folder, exist_ok=True)
 
     def __call__(self, val_loss, model):
         score = -val_loss
@@ -238,14 +237,20 @@ class EarlyStopping:
         self.val_loss_min = val_loss
         torch.save(
             model.state_dict(),
-            f"{'output'}/{self.path}_loss:{self.val_loss_min:.2f}",  # type: ignore
+            f"{self.path_folder}/step_{self.step}_loss:{self.val_loss_min:.2f}.pt",  # type: ignore
         )
-
-    def load_checkpoint(self, model):
-        model.load_state_dict(torch.load(self.path))
+        torch.save(
+            model.state_dict(),
+            f"{self.path_folder}/best.pt",  # type: ignore
+        )
+        self.step += 1
 
     def is_early_stop(self):
         return self.early_stop
+
+    def load_best_model(self, model):
+        model.load_state_dict(torch.load(f"{self.path_folder}/best.pt"))
+        return model
 
     def reset(self):
         self.early_stop = False

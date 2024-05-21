@@ -52,7 +52,15 @@ def train_epoch(
     return cr
 
 
-def eval_model(model, data_loader, loss_fn, device, early_stopping, sub_task, **kwargs):
+def eval_model(
+    model,
+    data_loader,
+    loss_fn,
+    device,
+    early_stopping=lambda x, y: None,
+    sub_task="multi_label",
+    **kwargs,
+):
     model = model.eval()
     stack_target = []
     stack_preds = []
@@ -69,7 +77,7 @@ def eval_model(model, data_loader, loss_fn, device, early_stopping, sub_task, **
             stack_preds.append(preds.detach().cpu())
             losses.append(loss.item())
 
-    early_stopping(np.mean(losses), model)
+    early_stopping(np.mean(losses), model)  # type: ignore
     stack_target = torch.cat(stack_target, dim=0)
     stack_preds = torch.cat(stack_preds, dim=0)
     cr: dict = classification_report(stack_target, stack_preds, output_dict=True, target_names=labels_name, zero_division=0)  # type: ignore
@@ -121,6 +129,7 @@ class Trainer:
         accumulate_steps,
         early_stopping,
         patience,
+        experiment_name,
     ):
         self.model = model
         self.optimizer = optimizer
@@ -137,7 +146,9 @@ class Trainer:
         )
 
         if self.early_stopping:
-            self.early_stopping = EarlyStopping(patience=self.patience, verbose=True)
+            self.early_stopping = EarlyStopping(
+                experiment_name, patience=self.patience, verbose=True
+            )
 
         self.history = {"num_parameters": model.num_parameters}
 
@@ -209,17 +220,23 @@ class Trainer:
             print(
                 f'Eval loss {classification_report_eval["loss"] if validation_dataloader else "N/A"}'
             )
+            if self.early_stopping.early_stop:
+                print("Early stopping")
+                break
 
         return history
 
-    def evaluate(self, test_dataloader: Dataset):
+    def evaluate(self, test_dataloader: Dataset, load_best=False):
+        if load_best:
+            best_model = self.early_stopping.load_best_model(self.model)
+        else:
+            best_model = self.model
         classification_report_test = eval_model(
-            self.model,
+            best_model,
             test_dataloader,
             self.loss_fn,
             self.device,
-            self.early_stopping,
-            self.sub_task,
+            sub_task=self.sub_task,
             labels_name=self.labels_name,
         )
         return classification_report_test

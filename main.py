@@ -20,14 +20,12 @@ from config import (
     LOGIT_POOLER_LAYER,
     LOGIT_AGREGATION,
 )
-import torch
 from dataset import createDataLoader
-import json
 from train_eval_fn import Trainer
-from tqdm import tqdm
+import uuid, shutil, json, torch
 
 if __name__ == "__main__":
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # type: ignore
 
     name_dataset = "lex_glue"
     data_dir = "ecthr_a"
@@ -51,9 +49,9 @@ if __name__ == "__main__":
     train = ecthr_cases["train"]  # type: ignore
     test = ecthr_cases["test"]  # type: ignore
     validation = ecthr_cases["validation"]  # type: ignore
-    train = {k: train[k][:200] for k in [feature_text, feature_label]}  # type: ignore
-    test = {k: test[k][:100] for k in [feature_text, feature_label]}  # type: ignore
-    validation = {k: validation[k][:100] for k in [feature_text, feature_label]}  # type: ignore
+    train = {k: train[k] for k in [feature_text, feature_label]}  # type: ignore
+    test = {k: test[k] for k in [feature_text, feature_label]}  # type: ignore
+    validation = {k: validation[k] for k in [feature_text, feature_label]}  # type: ignore
     model = CustomBertClassifier(
         PRE_TRAINED_MODEL_NAME,
         PREDICT_AGREGATION,
@@ -98,6 +96,8 @@ if __name__ == "__main__":
     optimizer = OPTIMIZER(model.parameters(), lr=LR)
     loss_fn = LOSS().to(device)
 
+    experiment_name = f"{uuid.uuid4()}"
+
     trainer = Trainer(
         model,
         optimizer,
@@ -108,10 +108,18 @@ if __name__ == "__main__":
         ACCUMULATIVE_STEPS,
         True,
         patience=PATIENCE,
+        experiment_name=experiment_name,
     )
 
     trainer.train(EPOCHS, train_dataloader, validation_dataloader)  # type: ignore
-    trainer.evaluate(test_dataloader)  # type: ignore
+    trainer.evaluate(test_dataloader, load_best=True)  # type: ignore
 
     history = trainer.history
-    json.dump(history, open("history.json", "w"), ensure_ascii=False, indent=4)
+    json.dump(
+        history,
+        open(f"{experiment_name}_output/history.json", "w"),
+        ensure_ascii=False,
+        indent=4,
+    )
+    shutil.copy("config.py", f"{experiment_name}_output/config.py")
+    shutil.copy("labels.json", f"{experiment_name}_output/labels.json")

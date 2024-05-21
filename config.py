@@ -5,7 +5,7 @@ import numpy as np
 
 SUB_TASK = "multi_label"
 PRE_TRAINED_MODEL_NAME = "google-bert/bert-base-cased"
-EPOCHS = 5
+EPOCHS = 15
 
 PREDICT_AGREGATION = "mean"
 LOGIT_AGREGATION = "mean"
@@ -20,7 +20,7 @@ MAX_LENGTH_TOKENS = 4096  # 8192 4096 2048 1024 512
 LR = 5e-5  # 2e-5
 ACCUMULATIVE_STEPS = 1
 DEBUG_MODE = False
-PATIENCE = 3
+PATIENCE = 5
 
 LOSS = nn.BCEWithLogitsLoss
 OPTIMIZER = AdamW
