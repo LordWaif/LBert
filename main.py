@@ -19,6 +19,8 @@ from config import (
     LOGIT_POOLER,
     LOGIT_POOLER_LAYER,
     LOGIT_AGREGATION,
+    ADD_LWAN,
+    NUM_HEADS,
 )
 from dataset import createDataLoader
 from train_eval_fn import Trainer
@@ -44,14 +46,14 @@ if __name__ == "__main__":
         labels_map = {_: _i for _i, _ in enumerate(lb)}
         json.dump(labels_map, open("labels.json", "w"), ensure_ascii=False, indent=4)
 
-    collect_labels(ecthr_cases["train"][feature_label], SUB_TASK)  # type: ignore
+    # collect_labels(ecthr_cases["train"][feature_label], SUB_TASK)  # type: ignore
     labels_json = json.load(open("labels.json"))
     train = ecthr_cases["train"]  # type: ignore
     test = ecthr_cases["test"]  # type: ignore
     validation = ecthr_cases["validation"]  # type: ignore
-    train = {k: train[k] for k in [feature_text, feature_label]}  # type: ignore
-    test = {k: test[k] for k in [feature_text, feature_label]}  # type: ignore
-    validation = {k: validation[k] for k in [feature_text, feature_label]}  # type: ignore
+    train = {k: train[k][:50] for k in [feature_text, feature_label]}  # type: ignore
+    test = {k: test[k][:50] for k in [feature_text, feature_label]}  # type: ignore
+    validation = {k: validation[k][:50] for k in [feature_text, feature_label]}  # type: ignore
     model = CustomBertClassifier(
         PRE_TRAINED_MODEL_NAME,
         PREDICT_AGREGATION,
@@ -59,6 +61,8 @@ if __name__ == "__main__":
         LOGIT_POOLER,
         LOGIT_POOLER_LAYER,
         num_classes=len(labels_json),
+        lwan=ADD_LWAN,
+        lwan_args={"num_heads": NUM_HEADS},
     )
     model = model.to(device)
     tokenizer = BertTokenizer.from_pretrained(PRE_TRAINED_MODEL_NAME)

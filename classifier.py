@@ -11,6 +11,8 @@ class CustomBertClassifier(torch.nn.Module):
         logit_pooler,
         hidden_layer,
         num_classes,
+        lwan,
+        lwan_args={},
     ):
         super(CustomBertClassifier, self).__init__()
         self.model: BertModel = BertModel.from_pretrained(model_name, output_hidden_states=True)  # type: ignore
@@ -28,6 +30,14 @@ class CustomBertClassifier(torch.nn.Module):
             input_linear = self.model.config.hidden_size * 2
         else:
             input_linear = self.model.config.hidden_size
+
+        self.lwan = lwan
+        if self.lwan:
+            self.lwan_classifier = LWAN(
+                self.model.config.hidden_size, num_classes, **lwan_args
+            )
+            input_linear = self.model.config.hidden_size * num_classes
+
         self.classifier = torch.nn.Linear(input_linear, self.num_classes)
 
     def forward(self, input_ids, attention_mask) -> torch.Tensor:
@@ -44,8 +54,13 @@ class CustomBertClassifier(torch.nn.Module):
             raise ValueError("Invalid logit_pooler")
         output = output.view(batch_size, mini_batch, -1)
         output = self.drop3(output)
-        pooler_output = self.pooler_predict_fn(output, self.predicted_agregation)
-        logits = self.classifier(pooler_output)
+
+        if self.lwan:
+            output = self.lwan_classifier(output)
+
+        output = self.pooler_predict_fn(output, self.predicted_agregation)
+
+        logits = self.classifier(output)
         return logits
 
     def pooler_predict_fn(self, logits: torch.Tensor, agregation) -> torch.Tensor:  # type: ignore
@@ -59,3 +74,39 @@ class CustomBertClassifier(torch.nn.Module):
             return logits.median(dim=1)[0]
         elif agregation == "mean_max":
             return torch.cat([logits.mean(dim=1), logits.max(dim=1)[0]], dim=1)
+
+
+class LWAN(torch.nn.Module):
+    def __init__(self, embedding_dim, num_classes, num_heads):
+        super(LWAN, self).__init__()
+        self.num_classes = num_classes
+        self.embedding_dim = embedding_dim
+        self.attention = torch.nn.MultiheadAttention(
+            embedding_dim, num_heads=num_heads, batch_first=True
+        )
+        # Vetores de atenção específicos para cada classe
+        self.class_attention_vectors = torch.nn.Parameter(
+            torch.randn(num_classes, embedding_dim)
+        )
+
+    def forward(self, x):
+        batch_size, seq_len, embed_dim = x.size()
+        # Aplicar atenção para cada classe
+        attention_outputs = []
+        for i in range(self.num_classes):
+            class_vector = (
+                self.class_attention_vectors[i].unsqueeze(0).unsqueeze(1)
+            )  # Shape: [1, 1, embed_dim]
+            class_vector = class_vector.expand(
+                batch_size, seq_len, -1
+            )  # Shape: [batch_size, 1, embed_dim]
+            class_attn_output, _ = self.attention(class_vector, x, x)
+            attention_outputs.append(
+                class_attn_output.squeeze(1)
+            )  # Shape: [batch_size, embed_dim]
+
+        # Concatenar as representações de cada classe
+        concatenated_output = torch.cat(
+            attention_outputs, dim=2
+        )  # Shape: [batch_size, num_classes * embed_dim]
+        return concatenated_output
