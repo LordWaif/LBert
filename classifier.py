@@ -92,6 +92,7 @@ class LWAN(torch.nn.Module):
     def forward(self, x):
         batch_size, seq_len, embed_dim = x.size()
         # Aplicar atenção para cada classe
+        print(x.shape)
         attention_outputs = []
         for i in range(self.num_classes):
             class_vector = (
@@ -106,6 +107,7 @@ class LWAN(torch.nn.Module):
             )  # Shape: [batch_size, embed_dim]
 
         # Concatenar as representações de cada classe
+        print(attention_outputs[0].shape)
         concatenated_output = torch.cat(
             attention_outputs, dim=2
         )  # Shape: [batch_size, num_classes * embed_dim]
