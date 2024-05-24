@@ -21,36 +21,42 @@ from config import (
     LOGIT_AGREGATION,
     ADD_LWAN,
     NUM_HEADS,
+    DATA_MODE,
+    DATA_INFO,
+    COLLECT_LABELS,
 )
 from dataset import createDataLoader
 from train_eval_fn import Trainer
 import uuid, shutil, json, torch
+from utils import collect_labels
 
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # type: ignore
 
-    name_dataset = "lex_glue"
-    data_dir = "ecthr_a"
+    feature_text = DATA_INFO["feature_text"]
+    feature_label = DATA_INFO["feature_label"]
+    if DATA_MODE == "huggingface":
+        name_dataset = DATA_INFO["name_dataset"]
+        data_dir = DATA_INFO["data_dir"]
+        dataset = load_dataset(name_dataset, data_dir=data_dir, trust_remote_code=True)
+    elif DATA_MODE == "dataframe":
+        import pandas as pd
+        from pathlib import Path
 
-    feature_text = "text"
-    feature_label = "labels"
+        paths = DATA_INFO["path"].split("||")
+        _df_paths = zip(["train", "validation", "test"], paths)
+        dataset = {
+            k: pd.read_csv(v) if Path(v).suffix == ".csv" else pd.read_pickle(v)
+            for k, v in _df_paths
+        }
 
-    ecthr_cases = load_dataset(name_dataset, data_dir=data_dir, trust_remote_code=True)
+    if COLLECT_LABELS:
+        collect_labels(dataset["train"][feature_label], SUB_TASK)  # type: ignore
 
-    def collect_labels(labels, sub_task):
-        if sub_task == "multi_label":
-            labels = [item for sublist in labels for item in sublist]
-        elif sub_task == "multi_class":
-            labels = labels
-        lb = set(labels)
-        labels_map = {_: _i for _i, _ in enumerate(lb)}
-        json.dump(labels_map, open("labels.json", "w"), ensure_ascii=False, indent=4)
-
-    # collect_labels(ecthr_cases["train"][feature_label], SUB_TASK)  # type: ignore
     labels_json = json.load(open("labels.json"))
-    train = ecthr_cases["train"]  # type: ignore
-    test = ecthr_cases["test"]  # type: ignore
-    validation = ecthr_cases["validation"]  # type: ignore
+    train = dataset["train"]  # type: ignore
+    test = dataset["test"]  # type: ignore
+    validation = dataset["validation"]  # type: ignore
     train = {k: train[k][:50] for k in [feature_text, feature_label]}  # type: ignore
     test = {k: test[k][:50] for k in [feature_text, feature_label]}  # type: ignore
     validation = {k: validation[k][:50] for k in [feature_text, feature_label]}  # type: ignore
@@ -69,7 +75,9 @@ if __name__ == "__main__":
     print(f"Nº of parameters: {model.num_parameters}")
 
     def __(dataloader):
-        if name_dataset == "ecthr_cases" or data_dir == "ecthr_a":
+        if DATA_MODE == "huggingface" and (
+            name_dataset == "ecthr_cases" or data_dir == "ecthr_a"
+        ):
             text = ["\n".join(_) for _ in dataloader[feature_text]]
             labels = dataloader[feature_label]
             return {feature_text: text, feature_label: labels}
