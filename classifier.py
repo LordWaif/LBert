@@ -12,7 +12,9 @@ class CustomBertClassifier(torch.nn.Module):
         hidden_layer,
         num_classes,
         lwan,
+        second_level,
         lwan_args={},
+        second_level_args={},
     ):
         super(CustomBertClassifier, self).__init__()
         self.model: BertModel = BertModel.from_pretrained(model_name, output_hidden_states=True)  # type: ignore
@@ -23,8 +25,6 @@ class CustomBertClassifier(torch.nn.Module):
         self.logit_agregation = logit_agregation
         self.logit_pooler = logit_pooler
         self.hidden_layer = hidden_layer
-
-        self.num_parameters = sum(p.numel() for p in self.parameters())
 
         if self.predicted_agregation == "mean_max":
             input_linear = self.model.config.hidden_size * 2
@@ -38,7 +38,15 @@ class CustomBertClassifier(torch.nn.Module):
             )
             input_linear = self.model.config.hidden_size * num_classes
 
+        self.second_level = second_level
+        if self.second_level:
+            self.second_level_transformer = SecondLevelTransformer(
+                self.model.config.hidden_size, **second_level_args
+            )
+            input_linear = self.model.config.hidden_size
+
         self.classifier = torch.nn.Linear(input_linear, self.num_classes)
+        self.num_parameters = sum(p.numel() for p in self.parameters())
 
     def forward(self, input_ids, attention_mask) -> torch.Tensor:
         batch_size, mini_batch, _ = input_ids.size()
@@ -57,6 +65,8 @@ class CustomBertClassifier(torch.nn.Module):
 
         if self.lwan:
             output = self.lwan_classifier(output)
+        if self.second_level:
+            output = self.second_level_transformer(output)
 
         output = self.pooler_predict_fn(output, self.predicted_agregation)
 
@@ -110,3 +120,26 @@ class LWAN(torch.nn.Module):
             attention_outputs, dim=2
         )  # Shape: [batch_size, num_classes * embed_dim]
         return concatenated_output
+
+
+class SecondLevelTransformer(torch.nn.Module):
+    def __init__(self, input_dim, num_heads, hidden_dim, num_layers):
+        super(SecondLevelTransformer, self).__init__()
+        encoder_layer = torch.nn.TransformerEncoderLayer(
+            d_model=input_dim, nhead=num_heads, dim_feedforward=hidden_dim
+        )
+        self.transformer_encoder = torch.nn.TransformerEncoder(
+            encoder_layer, num_layers=num_layers
+        )
+
+    def forward(self, paragraph_representations):
+        batch_size, segment_size, embed_dim = paragraph_representations.size()
+        paragraph_representations = paragraph_representations.view(-1, embed_dim)
+        # Adding a batch dimension
+        context_aware_representations = self.transformer_encoder(
+            paragraph_representations
+        )
+        context_aware_representations = context_aware_representations.view(
+            batch_size, segment_size, -1
+        )
+        return context_aware_representations

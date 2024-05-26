@@ -24,6 +24,9 @@ from config import (
     DATA_MODE,
     DATA_INFO,
     COLLECT_LABELS,
+    ADD_SECOND_LEVEL,
+    NUM_LAYERS,
+    HIDDEN_DIM,
 )
 from dataset import createDataLoader
 from train_eval_fn import Trainer
@@ -68,7 +71,13 @@ if __name__ == "__main__":
         LOGIT_POOLER_LAYER,
         num_classes=len(labels_json),
         lwan=ADD_LWAN,
+        second_level=ADD_SECOND_LEVEL,
         lwan_args={"num_heads": NUM_HEADS},
+        second_level_args={
+            "num_heads": NUM_HEADS,
+            "num_layers": NUM_LAYERS,
+            "hidden_dim": HIDDEN_DIM,
+        },
     )
     model = model.to(device)
     tokenizer = BertTokenizer.from_pretrained(PRE_TRAINED_MODEL_NAME)
