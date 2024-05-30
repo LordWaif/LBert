@@ -24,7 +24,7 @@ HIDDEN_DIM = 768
 
 NUM_HEADS = 12
 
-PREDICT_AGREGATION = "mean"
+PREDICT_AGREGATION = "mean"  # "mean_max" "median_mean"
 LOGIT_AGREGATION = "mean"
 
 LOGIT_POOLER = "pooler_output"  # "hidden_state" or "pooler_output"
@@ -35,7 +35,7 @@ MAX_LENGTH = 128  # 512 256 128
 OVERLAP = 0.25  # 0.2 0.1 0.5 0.25
 MAX_LENGTH_TOKENS = 8192  # 8192 4096 2048 1024 512
 LR = 3e-5  # 2e-5
-ACCUMULATIVE_STEPS = 4
+ACCUMULATIVE_STEPS = 16
 DEBUG_MODE = False
 PATIENCE = 5
 

@@ -26,7 +26,7 @@ class CustomBertClassifier(torch.nn.Module):
         self.logit_pooler = logit_pooler
         self.hidden_layer = hidden_layer
 
-        if self.predicted_agregation == "mean_max":
+        if self.predicted_agregation in ["mean_max", "median_mean"]:
             input_linear = self.model.config.hidden_size * 2
         else:
             input_linear = self.model.config.hidden_size
@@ -36,6 +36,7 @@ class CustomBertClassifier(torch.nn.Module):
             self.lwan_classifier = LWAN(
                 self.model.config.hidden_size, num_classes, **lwan_args
             )
+            # TODO Possivel bug aqui
             input_linear = self.model.config.hidden_size * num_classes
 
         self.second_level = second_level
@@ -43,7 +44,6 @@ class CustomBertClassifier(torch.nn.Module):
             self.second_level_transformer = SecondLevelTransformer(
                 self.model.config.hidden_size, **second_level_args
             )
-            input_linear = self.model.config.hidden_size
 
         self.classifier = torch.nn.Linear(input_linear, self.num_classes)
         self.num_parameters = sum(p.numel() for p in self.parameters())
@@ -84,6 +84,8 @@ class CustomBertClassifier(torch.nn.Module):
             return logits.median(dim=1)[0]
         elif agregation == "mean_max":
             return torch.cat([logits.mean(dim=1), logits.max(dim=1)[0]], dim=1)
+        elif agregation == "median_mean":
+            return torch.cat([logits.median(dim=1)[0], logits.mean(dim=1)], dim=1)
 
 
 class LWAN(torch.nn.Module):
