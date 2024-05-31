@@ -18,22 +18,28 @@ EPOCHS = 20
 
 ADD_LWAN = False
 
-ADD_SECOND_LEVEL = False
+ADD_SECOND_LEVEL = True
 NUM_LAYERS = 2
 HIDDEN_DIM = 768
 
 NUM_HEADS = 12
 
 PREDICT_AGREGATION = "mean"  # "mean_max" "median_mean"
-LOGIT_AGREGATION = "mean"
+LAYERS_AGGREGATION = "concat"  # "mean" "max" "sum" if logit_pooler == "hidden_state"
+TOKENS_AGREGATION = "mean"  # "mean" "max" "sum" if logit_pooler == "hidden_state"
 
-LOGIT_POOLER = "pooler_output"  # "hidden_state" or "pooler_output"
-LOGIT_POOLER_LAYER = 0  # last layer: 0 , ante-penultimate: -1 ... n-penultimate: -n
+LOGIT_POOLER = "hidden_state"  # "hidden_state" or "pooler_output"
+LOGIT_POOLER_LAYER = [
+    12,
+    11,
+    10,
+    9,
+]  # last layer [12] or last four layers [12, 11, 10, 9]
 
 BATCH_SIZE = 2  # 8 4 2
-MAX_LENGTH = 128  # 512 256 128
+MAX_LENGTH = 32  # 512 256 128
 OVERLAP = 0.25  # 0.2 0.1 0.5 0.25
-MAX_LENGTH_TOKENS = 8192  # 8192 4096 2048 1024 512
+MAX_LENGTH_TOKENS = 64  # 8192 4096 2048 1024 512
 LR = 3e-5  # 2e-5
 ACCUMULATIVE_STEPS = 16
 DEBUG_MODE = False

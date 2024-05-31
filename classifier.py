@@ -7,7 +7,8 @@ class CustomBertClassifier(torch.nn.Module):
         self,
         model_name,
         predicted_agregation,
-        logit_agregation,
+        token_agregation,
+        layer_agregation,
         logit_pooler,
         hidden_layer,
         num_classes,
@@ -22,7 +23,8 @@ class CustomBertClassifier(torch.nn.Module):
         self.drop3 = torch.nn.Dropout(p=0.3)
 
         self.predicted_agregation = predicted_agregation
-        self.logit_agregation = logit_agregation
+        self.token_agregation = token_agregation
+        self.layer_agregation = layer_agregation
         self.logit_pooler = logit_pooler
         self.hidden_layer = hidden_layer
 
@@ -31,18 +33,19 @@ class CustomBertClassifier(torch.nn.Module):
         else:
             input_linear = self.model.config.hidden_size
 
+        if self.logit_pooler == "hidden_state" and self.layer_agregation == "concat":
+            input_linear = self.model.config.hidden_size * len(self.hidden_layer)
+
         self.lwan = lwan
         if self.lwan:
-            self.lwan_classifier = LWAN(
-                self.model.config.hidden_size, num_classes, **lwan_args
-            )
+            self.lwan_classifier = LWAN(input_linear, num_classes, **lwan_args)
             # TODO Possivel bug aqui
-            input_linear = self.model.config.hidden_size * num_classes
+            input_linear = input_linear * num_classes
 
         self.second_level = second_level
         if self.second_level:
             self.second_level_transformer = SecondLevelTransformer(
-                self.model.config.hidden_size, **second_level_args
+                input_linear, **second_level_args
             )
 
         self.classifier = torch.nn.Linear(input_linear, self.num_classes)
@@ -53,9 +56,16 @@ class CustomBertClassifier(torch.nn.Module):
         input_ids = input_ids.view(-1, input_ids.size(-1))
         attention_mask = attention_mask.view(-1, attention_mask.size(-1))
         output_model = self.model(input_ids=input_ids, attention_mask=attention_mask)
+        # print(output_model.hidden_states)
         if self.logit_pooler == "hidden_state":
-            output = output_model.hidden_states[self.hidden_layer - 1]
-            output = self.pooler_predict_fn(output, self.logit_agregation)
+            output = torch.stack(
+                [output_model.hidden_states[layer] for layer in self.hidden_layer],
+                dim=2,
+            )
+            # Layer Pooler
+            output = self.pooler_predict_fn(output, self.layer_agregation, dim=2)
+            # Token Pooler
+            output = self.pooler_predict_fn(output, self.token_agregation, dim=1)
         elif self.logit_pooler == "pooler_output":
             output = output_model.pooler_output
         else:
@@ -73,19 +83,23 @@ class CustomBertClassifier(torch.nn.Module):
         logits = self.classifier(output)
         return logits
 
-    def pooler_predict_fn(self, logits: torch.Tensor, agregation) -> torch.Tensor:  # type: ignore
+    def pooler_predict_fn(self, logits: torch.Tensor, agregation, dim=1) -> torch.Tensor:  # type: ignore
         if agregation == "mean":
-            return logits.mean(dim=1)
+            return logits.mean(dim=dim)
         elif agregation == "max":
-            return logits.max(dim=1)[0]
+            return logits.max(dim=dim)[0]
         elif agregation == "first":
             return logits[:, 0, :]
         elif agregation == "median":
-            return logits.median(dim=1)[0]
+            return logits.median(dim=dim)[0]
         elif agregation == "mean_max":
-            return torch.cat([logits.mean(dim=1), logits.max(dim=1)[0]], dim=1)
+            return torch.cat([logits.mean(dim=dim), logits.max(dim=dim)[0]], dim=1)
         elif agregation == "median_mean":
-            return torch.cat([logits.median(dim=1)[0], logits.mean(dim=1)], dim=1)
+            return torch.cat([logits.median(dim=dim)[0], logits.mean(dim=dim)], dim=1)
+        elif agregation == "concat":
+            return logits.view(logits.size(0), logits.size(1), -1)
+        elif agregation == "sum":
+            return logits.sum(dim=dim)
 
 
 class LWAN(torch.nn.Module):

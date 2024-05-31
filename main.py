@@ -18,7 +18,7 @@ from config import (
     ACCUMULATIVE_STEPS,
     LOGIT_POOLER,
     LOGIT_POOLER_LAYER,
-    LOGIT_AGREGATION,
+    TOKENS_AGREGATION,
     ADD_LWAN,
     NUM_HEADS,
     DATA_MODE,
@@ -27,6 +27,7 @@ from config import (
     ADD_SECOND_LEVEL,
     NUM_LAYERS,
     HIDDEN_DIM,
+    LAYERS_AGGREGATION,
 )
 from dataset import createDataLoader
 from train_eval_fn import Trainer
@@ -66,7 +67,8 @@ if __name__ == "__main__":
     model = CustomBertClassifier(
         PRE_TRAINED_MODEL_NAME,
         PREDICT_AGREGATION,
-        LOGIT_AGREGATION,
+        TOKENS_AGREGATION,
+        LAYERS_AGGREGATION,
         LOGIT_POOLER,
         LOGIT_POOLER_LAYER,
         num_classes=len(labels_json),
