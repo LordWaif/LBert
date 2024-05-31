@@ -25,8 +25,8 @@ HIDDEN_DIM = 768
 NUM_HEADS = 12
 
 PREDICT_AGREGATION = "mean"  # "mean_max" "median_mean"
-LAYERS_AGGREGATION = "concat"  # "mean" "max" "sum" if logit_pooler == "hidden_state"
-TOKENS_AGREGATION = "mean"  # "mean" "max" "sum" if logit_pooler == "hidden_state"
+LAYERS_AGGREGATION = "concat"  # "concat" "sum" if logit_pooler == "hidden_state"
+TOKENS_AGREGATION = "mean"  # "mean" "cls" if logit_pooler == "hidden_state"
 
 LOGIT_POOLER = "hidden_state"  # "hidden_state" or "pooler_output"
 LOGIT_POOLER_LAYER = [

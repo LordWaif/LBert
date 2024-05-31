@@ -100,6 +100,8 @@ class CustomBertClassifier(torch.nn.Module):
             return logits.view(logits.size(0), logits.size(1), -1)
         elif agregation == "sum":
             return logits.sum(dim=dim)
+        elif agregation == "cls":
+            return logits[:, 0, :]
 
 
 class LWAN(torch.nn.Module):
