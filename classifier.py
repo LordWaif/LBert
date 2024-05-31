@@ -84,6 +84,28 @@ class CustomBertClassifier(torch.nn.Module):
         return logits
 
     def pooler_predict_fn(self, logits: torch.Tensor, agregation, dim=1) -> torch.Tensor:  # type: ignore
+        """
+        Applies the specified aggregation method to the logits tensor.
+
+        Args:
+            logits (torch.Tensor): The input tensor of logits.
+            agregation (str): The aggregation method to apply. Options are: "mean", "max", "first", "median", "mean_max",
+                              "median_mean", "concat", "sum", "cls".
+            dim (int, optional): The dimension along which to perform the aggregation. Defaults to 1.
+
+        Returns:
+            torch.Tensor: The aggregated tensor.
+
+        Raises:
+            ValueError: If the specified aggregation method is not supported.
+
+        Examples:
+            >>> logits = torch.tensor([[1, 2, 3], [4, 5, 6]])
+            >>> model = Classifier()
+            >>> model.pooler_predict_fn(logits, "mean")
+            tensor([2.0000, 5.0000])
+
+        """
         if agregation == "mean":
             return logits.mean(dim=dim)
         elif agregation == "max":
@@ -102,6 +124,8 @@ class CustomBertClassifier(torch.nn.Module):
             return logits.sum(dim=dim)
         elif agregation == "cls":
             return logits[:, 0, :]
+        else:
+            raise ValueError("Invalid agregation method")
 
 
 class LWAN(torch.nn.Module):

@@ -4,6 +4,7 @@ from tqdm import tqdm
 import torch
 from torch import nn
 from torch.utils.data import Dataset
+from torch.utils.data import DataLoader
 import torch.nn.functional as F
 
 from transformers import get_linear_schedule_with_warmup
@@ -14,16 +15,34 @@ from config import get_multi_label_pred_fn, get_multi_class_pred_fn, DEBUG_MODE
 
 
 def train_epoch(
-    model,
-    data_loader,
+    model: torch.nn.Module,
+    data_loader: DataLoader,
     loss_fn,
-    optimizer,
-    device,
-    scheduler,
+    optimizer: torch.optim.Optimizer,
+    device: torch.device,
+    scheduler: torch.optim.lr_scheduler._LRScheduler,
     accelerator: Accelerator,
-    sub_task,
+    sub_task: str,
     **kwargs,
 ):
+    """
+    Trains the model for one epoch using the provided data loader.
+
+    Args:
+        model (torch.nn.Module): The model to be trained.
+        data_loader (torch.utils.data.DataLoader): The data loader for training data.
+        loss_fn (torch.nn.Module): The loss function to calculate the training loss.
+        optimizer (torch.optim.Optimizer): The optimizer to update the model's parameters.
+        device (torch.device): The device to perform the training on.
+        scheduler (torch.optim.lr_scheduler._LRScheduler): The learning rate scheduler.
+        accelerator (Accelerator): The accelerator for distributed training.
+        sub_task (str): The sub-task for training.
+        **kwargs: Additional keyword arguments.
+
+    Returns:
+        dict: A dictionary containing the classification report and the average loss.
+
+    """
     losses = []
     model = model.train()
     labels_name = kwargs.get("labels_name", None)
@@ -91,7 +110,24 @@ def eval_model(
     return cr
 
 
-def train_eval_fn(model, batch, sub_task, loss_fn, device):
+def train_eval_fn(
+    model: torch.nn.Module, batch: dict, sub_task: str, loss_fn, device
+) -> tuple:
+    """
+    Function to perform training and evaluation on a given model.
+
+    Args:
+        model (torch.nn.Module): The model to be trained and evaluated.
+        batch (dict): A dictionary containing the input batch data.
+        sub_task (str): The sub-task type, either "multi_class" or "multi_label".
+        loss_fn: The loss function to be used for training.
+        device: The device to be used for training and evaluation.
+
+    Returns:
+        tuple: A tuple containing the loss, targets, and predictions.
+
+    """
+
     def internal_train_eval_fn(model, batch, sub_task, loss_fn, device):
         input_ids = batch["input_ids"].to(device)
         attention_mask = batch["attention_mask"].to(device)
@@ -105,8 +141,6 @@ def train_eval_fn(model, batch, sub_task, loss_fn, device):
             preds = get_multi_class_pred_fn(probs)
         elif sub_task == "multi_label":
             loss = loss_fn(outputs, targets.float())
-            # for t, p in zip(targets, torch.sigmoid(outputs)):
-            #     print(t, p)
             preds = get_multi_label_pred_fn(outputs)
         return loss, targets.detach().cpu(), preds.detach().cpu()
 
@@ -185,7 +219,7 @@ class Trainer:
 
             classification_report_train = train_epoch(
                 self.model,
-                train_dataloader,
+                train_dataloader,  # type: ignore
                 self.loss_fn,
                 self.optimizer,
                 self.device,
