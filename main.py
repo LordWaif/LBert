@@ -61,9 +61,9 @@ if __name__ == "__main__":
     train = dataset["train"]  # type: ignore
     test = dataset["test"]  # type: ignore
     validation = dataset["validation"]  # type: ignore
-    train = {k: train[k][:50] for k in [feature_text, feature_label]}  # type: ignore
-    test = {k: test[k][:50] for k in [feature_text, feature_label]}  # type: ignore
-    validation = {k: validation[k][:50] for k in [feature_text, feature_label]}  # type: ignore
+    train = {k: train[k] for k in [feature_text, feature_label]}  # type: ignore
+    test = {k: test[k] for k in [feature_text, feature_label]}  # type: ignore
+    validation = {k: validation[k] for k in [feature_text, feature_label]}  # type: ignore
     model = CustomBertClassifier(
         PRE_TRAINED_MODEL_NAME,
         PREDICT_AGREGATION,

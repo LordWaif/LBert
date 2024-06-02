@@ -3,16 +3,16 @@ from torch import nn
 from torch.optim import AdamW
 import numpy as np
 
-COLLECT_LABELS = False
+COLLECT_LABELS = True
 DATA_MODE = "huggingface"  # "huggingface" or "dataframe"
 DATA_INFO = {
     "name_dataset": "lex_glue",  # "path" : "train.csv||validation.csv||test.csv"
-    "data_dir": "ecthr_a",  # ...
+    "data_dir": "scotus",  # ...
     "feature_text": "text",  # "feature_text": "text",
-    "feature_label": "labels",  # "feature_label": "labels",
+    "feature_label": "label",  # "feature_label": "labels",
 }
 
-SUB_TASK = "multi_label"
+SUB_TASK = "multi_class"  # "multi_class" or "multi_label
 PRE_TRAINED_MODEL_NAME = "google-bert/bert-base-cased"
 EPOCHS = 20
 
@@ -25,10 +25,10 @@ HIDDEN_DIM = 768
 NUM_HEADS = 12
 
 PREDICT_AGREGATION = "mean"  # "mean_max" "median_mean"
-LAYERS_AGGREGATION = "concat"  # "concat" "sum" if logit_pooler == "hidden_state"
+LAYERS_AGGREGATION = "sum"  # "concat" "sum" if logit_pooler == "hidden_state"
 TOKENS_AGREGATION = "mean"  # "mean" "cls" if logit_pooler == "hidden_state"
 
-LOGIT_POOLER = "hidden_state"  # "hidden_state" or "pooler_output"
+LOGIT_POOLER = "pooler_output"  # "hidden_state" or "pooler_output"
 LOGIT_POOLER_LAYER = [
     12,
     11,
@@ -37,15 +37,15 @@ LOGIT_POOLER_LAYER = [
 ]  # last layer [12] or last four layers [12, 11, 10, 9]
 
 BATCH_SIZE = 2  # 8 4 2
-MAX_LENGTH = 32  # 512 256 128
+MAX_LENGTH = 128  # 512 256 128
 OVERLAP = 0.25  # 0.2 0.1 0.5 0.25
-MAX_LENGTH_TOKENS = 64  # 8192 4096 2048 1024 512
+MAX_LENGTH_TOKENS = 8192  # 8192 4096 2048 1024 512
 LR = 3e-5  # 2e-5
 ACCUMULATIVE_STEPS = 16
 DEBUG_MODE = False
 PATIENCE = 5
 
-LOSS = nn.BCEWithLogitsLoss
+LOSS = nn.CrossEntropyLoss  # nn.BCEWithLogitsLoss nn.CrossEntropyLoss
 OPTIMIZER = AdamW
 
 ORG_MODE = "batch_mode"
