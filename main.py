@@ -19,7 +19,6 @@ from config import (
     LOGIT_POOLER,
     LOGIT_POOLER_LAYER,
     TOKENS_AGREGATION,
-    ADD_LWAN,
     NUM_HEADS,
     DATA_MODE,
     DATA_INFO,
@@ -28,6 +27,8 @@ from config import (
     NUM_LAYERS,
     HIDDEN_DIM,
     LAYERS_AGGREGATION,
+    ADD_CONV,
+    KERNEL_SIZE,
 )
 from dataset import createDataLoader
 from train_eval_fn import Trainer
@@ -61,9 +62,9 @@ if __name__ == "__main__":
     train = dataset["train"]  # type: ignore
     test = dataset["test"]  # type: ignore
     validation = dataset["validation"]  # type: ignore
-    train = {k: train[k] for k in [feature_text, feature_label]}  # type: ignore
-    test = {k: test[k] for k in [feature_text, feature_label]}  # type: ignore
-    validation = {k: validation[k] for k in [feature_text, feature_label]}  # type: ignore
+    train = {k: train[k][:50] for k in [feature_text, feature_label]}  # type: ignore
+    test = {k: test[k][:50] for k in [feature_text, feature_label]}  # type: ignore
+    validation = {k: validation[k][:50] for k in [feature_text, feature_label]}  # type: ignore
     model = CustomBertClassifier(
         PRE_TRAINED_MODEL_NAME,
         PREDICT_AGREGATION,
@@ -72,9 +73,9 @@ if __name__ == "__main__":
         LOGIT_POOLER,
         LOGIT_POOLER_LAYER,
         num_classes=len(labels_json),
-        lwan=ADD_LWAN,
         second_level=ADD_SECOND_LEVEL,
-        lwan_args={"num_heads": NUM_HEADS},
+        conv=ADD_CONV,
+        conv_args={"kernel_size": KERNEL_SIZE, "num_filters": MAX_LENGTH},
         second_level_args={
             "num_heads": NUM_HEADS,
             "num_layers": NUM_LAYERS,

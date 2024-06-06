@@ -12,9 +12,9 @@ class CustomBertClassifier(torch.nn.Module):
         logit_pooler,
         hidden_layer,
         num_classes,
-        lwan,
         second_level,
-        lwan_args={},
+        conv,
+        conv_args={},
         second_level_args={},
     ):
         super(CustomBertClassifier, self).__init__()
@@ -36,19 +36,21 @@ class CustomBertClassifier(torch.nn.Module):
         if self.logit_pooler == "hidden_state" and self.layer_agregation == "concat":
             input_linear = self.model.config.hidden_size * len(self.hidden_layer)
 
-        self.lwan = lwan
-        if self.lwan:
-            self.lwan_classifier = LWAN(input_linear, num_classes, **lwan_args)
-            # TODO Possivel bug aqui
-            input_linear = input_linear * num_classes
-
-        self.second_level = second_level
-        if self.second_level:
-            self.second_level_transformer = SecondLevelTransformer(
-                input_linear, **second_level_args
+        self.conv = conv
+        if self.conv:
+            input_linear = self.model.config.hidden_size
+            self.convolutional = Convolutional(
+                input_dim=input_linear,
+                num_classes=self.num_classes,
+                **conv_args,
             )
-
-        self.classifier = torch.nn.Linear(input_linear, self.num_classes)
+        else:
+            self.second_level = second_level
+            if self.second_level:
+                self.second_level_transformer = SecondLevelTransformer(
+                    input_linear, **second_level_args
+                )
+            self.classifier = torch.nn.Linear(input_linear, self.num_classes)
         self.num_parameters = sum(p.numel() for p in self.parameters())
 
     def forward(self, input_ids, attention_mask) -> torch.Tensor:
@@ -64,8 +66,16 @@ class CustomBertClassifier(torch.nn.Module):
             )
             # Layer Pooler
             output = self.pooler_predict_fn(output, self.layer_agregation, dim=2)
-            # Token Pooler
-            output = self.pooler_predict_fn(output, self.token_agregation, dim=1)
+            if self.conv:
+                output = self.drop3(output)
+                output = self.convolutional(output)
+                output = self.pooler_predict_fn(output, self.token_agregation, dim=2)
+                output = output.view(batch_size, mini_batch, -1)
+                output = self.pooler_predict_fn(output, self.predicted_agregation)
+                return output
+            else:
+                # Token Pooler
+                output = self.pooler_predict_fn(output, self.token_agregation, dim=1)
         elif self.logit_pooler == "pooler_output":
             output = output_model.pooler_output
         else:
@@ -73,8 +83,6 @@ class CustomBertClassifier(torch.nn.Module):
         output = output.view(batch_size, mini_batch, -1)
         output = self.drop3(output)
 
-        if self.lwan:
-            output = self.lwan_classifier(output)
         if self.second_level:
             output = self.second_level_transformer(output)
 
@@ -128,42 +136,6 @@ class CustomBertClassifier(torch.nn.Module):
             raise ValueError("Invalid agregation method")
 
 
-class LWAN(torch.nn.Module):
-    def __init__(self, embedding_dim, num_classes, num_heads):
-        super(LWAN, self).__init__()
-        self.num_classes = num_classes
-        self.embedding_dim = embedding_dim
-        self.attention = torch.nn.MultiheadAttention(
-            embedding_dim, num_heads=num_heads, batch_first=True
-        )
-        # Vetores de atenção específicos para cada classe
-        self.class_attention_vectors = torch.nn.Parameter(
-            torch.randn(num_classes, embedding_dim)
-        )
-
-    def forward(self, x):
-        batch_size, seq_len, embed_dim = x.size()
-        # Aplicar atenção para cada classe
-        attention_outputs = []
-        for i in range(self.num_classes):
-            class_vector = (
-                self.class_attention_vectors[i].unsqueeze(0).unsqueeze(1)
-            )  # Shape: [1, 1, embed_dim]
-            class_vector = class_vector.expand(
-                batch_size, seq_len, -1
-            )  # Shape: [batch_size, 1, embed_dim]
-            class_attn_output, _ = self.attention(class_vector, x, x)
-            attention_outputs.append(
-                class_attn_output
-            )  # Shape: [batch_size, embed_dim]
-
-        # Concatenar as representações de cada classe
-        concatenated_output = torch.cat(
-            attention_outputs, dim=2
-        )  # Shape: [batch_size, num_classes * embed_dim]
-        return concatenated_output
-
-
 class SecondLevelTransformer(torch.nn.Module):
     def __init__(self, input_dim, num_heads, hidden_dim, num_layers):
         super(SecondLevelTransformer, self).__init__()
@@ -185,3 +157,25 @@ class SecondLevelTransformer(torch.nn.Module):
             batch_size, segment_size, -1
         )
         return context_aware_representations
+
+
+class Convolutional(torch.nn.Module):
+    def __init__(self, input_dim, kernel_size, num_filters, num_classes):
+        super(Convolutional, self).__init__()
+        self.conv1 = torch.nn.Conv1d(
+            in_channels=input_dim,
+            out_channels=num_filters,
+            kernel_size=kernel_size,
+            padding=1,
+        )
+        self.relu = torch.nn.ReLU()
+        self.conv2 = torch.nn.Conv1d(
+            in_channels=num_filters, out_channels=num_classes, kernel_size=2, padding=1
+        )
+
+    def forward(self, data):
+        data = data.permute(0, 2, 1)
+        x = self.conv1(data)
+        x = self.relu(x)
+        x = self.conv2(x)
+        return x
